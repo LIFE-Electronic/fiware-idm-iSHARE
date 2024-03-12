@@ -37,13 +37,15 @@ const authenticate_bearer = async function authenticate_bearer(req) {
 
   const response = new Response();
 
+  debug('authenticate_bearer', req.headers.authorization)
+
   return await oauth2.authenticate(request, response, options);
 }
 
-const get_delegation_evidence = async function get_delegation_evidence(subject) {
+const get_delegation_evidence = async function get_delegation_evidence(issuer, subject) {
   const evidence = await models.delegation_evidence.findOne({
     where: {
-      policy_issuer: config.pr.client_id,
+      policy_issuer: issuer,
       access_subject: subject
     }
   });
@@ -75,12 +77,12 @@ const _upsert_policy = async function _upsert_policy(req, res) {
   const evidence = req.body.delegationEvidence;
 
   // Check policyIssuer
-  if (evidence.policyIssuer !== config.pr.client_id) {
-    res.status(422).json({
-      error: `Invalid value for policyIssuer: ${evidence.policyIssuer}`
-    });
-    return true;
-  }
+  //if (evidence.policyIssuer !== config.pr.client_id) {
+  //  res.status(422).json({
+  //    error: `Invalid value for policyIssuer: ${evidence.policyIssuer}`
+  //  });
+  //  return true;
+  //}
 
   // Create/update sent policy
   models.delegation_evidence.upsert({
@@ -166,7 +168,9 @@ const _query_evidences = async function _query_evidences(req, res) {
 
   debug('Requesting available delegation evidences');
 
-  const evidence = await get_delegation_evidence(mask.target.accessSubject);
+  const evidence = await get_delegation_evidence(
+	  mask.policyIssuer,
+	  mask.target.accessSubject);
   if (evidence == null) {
     res.status(404).end();
     return true;
@@ -222,7 +226,7 @@ const _query_evidences = async function _query_evidences(req, res) {
 exports.oauth2 = oauth2;
 exports.get_delegation_evidence = get_delegation_evidence;
 exports.upsert_policy = function upsert_policy(req, res, next) {
-  debug(' --> policy');
+  debug(' --> upsert_policy');
   _upsert_policy(req, res).then(
     (skip) => {
       if (!skip) {

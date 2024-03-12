@@ -18,6 +18,7 @@ const ensure_client_key_is_ready = async function ensure_client_key_is_ready() {
   if (typeof config.pr.client_key === 'string') {
     debug('preparing Participant Key & client certificate');
     config.pr.client_key = await jose.JWK.asKey(config.pr.client_key, 'pem');
+    debug('got key... scan cert')
     if (config.pr.client_crt.indexOf('-----BEGIN CERTIFICATE-----') !== -1) {
       const str = config.pr.client_crt;
       config.pr.client_crt = [];
@@ -104,7 +105,7 @@ exports.assert_client_using_jwt = async function assert_client_using_jwt(credent
 
     const aud = typeof payload.aud === 'string' ? [payload.aud] : payload.aud;
     if (aud == null || aud.indexOf(config.pr.client_id) === -1) {
-      throw new Error('Not listed on the aud parameter');
+      throw new Error(`${config.pr.client_id} Not listed on the aud parameter`);
     }
     const now = moment().unix();
     if (payload.exp < now) {
@@ -176,6 +177,7 @@ exports.validate_participant_from_jwt = async function validate_participant_from
     body: params
   });
   if (token_response.status !== 200) {
+    debug('iSHARE satellite response:', token_response.status)
     throw new oauth2_server.ServerError('internal error: unable to validate client as participant');
   }
 

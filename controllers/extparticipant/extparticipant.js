@@ -57,7 +57,8 @@ async function build_access_token(client, user, grant_type) {
   /* eslint-disable snakecase/snakecase */
   const claims = {
     iss: config.pr.client_id,
-    sub: grant_type === m2m_grant_type ? user.username : user.id, // TODO
+    //sub: grant_type === m2m_grant_type ? user.username : user.id, // TODO
+    sub: grant_type === m2m_grant_type ? user.username : client.id, // MARKUS: what do return here?
     jti: uuid.v4(),
     iat: now.unix(),
     exp: exp.unix(),
@@ -73,11 +74,14 @@ async function build_access_token(client, user, grant_type) {
         identifier: config.ar.identifier
       };
     } else if (config.ar.url === "internal") {
-      claims.delegationEvidence = await authregistry.get_delegation_evidence(user.username);
+      debug('get delegation evidence')
+      //claims.delegationEvidence = await authregistry.get_delegation_evidence(
+      //      user.username); // 
     }
   }
   /* eslint-enable snakecase/snakecase */
-
+ 
+  debug('create jwt')
   return [
     await utils.create_jwt(claims),
     exp.toDate()
@@ -107,6 +111,7 @@ const ensure_client_application = async function ensure_client_application(parti
 };
 
 async function _validate_participant(req, res) {
+  debug('_validate_participant')
   const scopes = new Set(req.body.scope != null ? req.body.scope.split(' ') : []);
   if (!scopes.has('iSHARE')) {
     return false;
@@ -118,9 +123,8 @@ async function _validate_participant(req, res) {
     throw new oauth2_server.InvalidRequestError('Missing parameter: `client_id`');
   }
 
-  debug('using external participant registry flow');
-
   const credentials = req.body.request;
+  debug('credentials', credentials)
   if (!credentials) {
     throw new oauth2_server.InvalidRequestError('Missing parameter: `request`');
   }
@@ -153,6 +157,7 @@ async function _validate_participant(req, res) {
 }
 
 async function _token(req, res) {
+  debug('_token')
 
   if (!req.is('application/x-www-form-urlencoded')) {
     throw new oauth2_server.InvalidRequestError(`Invalid request: content must be application/x-www-form-urlencoded [${req.headers}]`);
@@ -236,17 +241,21 @@ async function _token(req, res) {
     }, {
       validate: false // Currently, we are inserting an invalid email address for the participant
     });
+    debug('Participant upserted in db')
 
     scopes = new Set(req.body.scope != null ? req.body.scope.split(/[,\s]+/) : []);
     user = await models.user.findOne({where: {username: client_payload.iss}});
     if (grant_type === "client_credentials") {
       // Build id and access tokens
+      debug('Create id token')
       id_token = await build_id_token(client, user, scopes);
     }
   }
 
+  debug(`'Build access token. Client: ${client}. User: ${user}. Grant_type: ${grant_type}`)
   // Create and save access_token
   const [access_token, access_token_exp] = await build_access_token(client, user, grant_type);
+  debug('Insert access token in db')
   await models.oauth_access_token.create({
       hash: crypto.createHash("sha3-256").update(access_token).digest('hex'),
       access_token,
